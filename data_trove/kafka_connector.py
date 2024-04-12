@@ -33,19 +33,15 @@ class KafkaClient:
         producer.flush()
         producer.close()
 
-    # Publish messages to Kafka topics
-    def publish_messages(self):
+    def publish_csv(self):
+        producer = KafkaProducer(bootstrap_servers=self.bootstrap_servers,
+                                 value_serializer=lambda v: json.dumps(v).encode('utf-8'))
         # Example bid requests data
         bid_schema = schema.parse(open("bid_request.avsc", "rb").read())
         writer = datafile.DataFileWriter(open("bid_requests.avro", "wb"), io.DatumWriter(), bid_schema)
         writer.append({"user_id": "user789", "auction_id": 123, "ad_targeting_criteria": ["male", "25-34"]})
         writer.close()
-        
-        # Publish messages to topics
-        
-        for message in clicks_conversions:
-            producer.send(clicks_conversions_topic, value=message)
-        
+                
         # Publish Avro messages to topic
         with open("bid_requests.avro", "rb") as f:
             producer.send(bid_requests_topic, value=f.read())
