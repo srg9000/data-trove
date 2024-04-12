@@ -33,18 +33,29 @@ class KafkaClient:
         producer.flush()
         producer.close()
 
-    def publish_csv(self):
+    def publish_csv(self, topic_name, csv_path, delimiter=','):
+        producer = KafkaProducer(bootstrap_servers=self.bootstrap_servers,
+                                 value_serializer=lambda v: json.dumps(v).encode('utf-8'))
+        with open(csv_path) as file:
+            reader = csv.DictReader(file, delimiter=delimiter)
+            for row in reader:
+                producer.send(topic=topic_name, value=row)
+                producer.flush()
+        producer.close()
+
+    def publish_avro(self, avro_path="bid_request.avsc", writer_path="bid_requests.avro",
+            bid_requests_topic="bid_requests"):
         producer = KafkaProducer(bootstrap_servers=self.bootstrap_servers,
                                  value_serializer=lambda v: json.dumps(v).encode('utf-8'))
         # Example bid requests data
-        bid_schema = schema.parse(open("bid_request.avsc", "rb").read())
-        writer = datafile.DataFileWriter(open("bid_requests.avro", "wb"), io.DatumWriter(), bid_schema)
+        bid_schema = schema.parse(open(avro_path, "rb").read())
+        writer = datafile.DataFileWriter(open(writer_path, "wb"), io.DatumWriter(), bid_schema)
         writer.append({"user_id": "user789", "auction_id": 123, "ad_targeting_criteria": ["male", "25-34"]})
         writer.close()
                 
         # Publish Avro messages to topic
         with open("bid_requests.avro", "rb") as f:
-            producer.send(bid_requests_topic, value=f.read())
+            producer.send(topic_name, value=f.read())
 
         producer.flush()
         producer.close()
@@ -56,9 +67,12 @@ class KafkaClient:
                                  value_deserializer=lambda x: json.loads(x.decode('utf-8')))
         
         consumer.subscribe(topics=topic_list)
-        
-        for message in consumer:
-            print(f"Received message: {message.value} from topic: {message.topic}")
+        try:
+            for message in consumer:
+                print(f"Received message: {message.value} from topic: {message.topic}")
+        except KeyboardInterrupt:
+            consumer.close()
+
 
 if __name__ == "__main__":
     # Kafka broker properties
@@ -89,6 +103,7 @@ if __name__ == "__main__":
         {"user_id": "user4566", "timestamp": datetime.datetime.now(), "ad_campaign_id": 4, "conversion_type": "purchase"}
     ]
     client.publish_json(impressions_topic, ad_impressions)
-    client.publish_json(clicks_conversions_topic, clicks_conversions)
+    client.publish_csv(clicks_conversions_topic, "dummy_csv.csv", delimiter=',')
+    # client.publish_avro()
     topic_list = [impressions_topic, clicks_conversions_topic, bid_requests_topic]
     client.subscribe_to_topics(topic_list)
